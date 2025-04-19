@@ -83,6 +83,29 @@ async function bootstrap() {
   // This filter logs errors and sends standardized error responses to clients
   app.useGlobalFilters(new GlobalExceptionFilter());
 
+  // Enable CORS with environment-specific settings
+  const isDevelopment = process.env.NODE_ENV !== 'production';
+  app.enableCors(
+    isDevelopment
+      ? {
+          // Development: permissive settings
+          origin: '*',
+          methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+          allowedHeaders: 'Content-Type, Accept, Authorization',
+          credentials: true,
+          exposedHeaders: ['Content-Type', 'Accept'],
+          maxAge: 3600,
+          optionsSuccessStatus: 200,
+        }
+      : {
+          // Production: restrictive settings
+          origin: process.env.ALLOWED_ORIGINS?.split(',') || 'https://yourdomain.com',
+          methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+          allowedHeaders: ['Content-Type', 'Authorization'],
+          credentials: true,
+          maxAge: 86400, // 24 hours
+        },
+  );
   // Configure Swagger documentation
   // This sets up API documentation that's accessible via browser
   const config = new DocumentBuilder()
