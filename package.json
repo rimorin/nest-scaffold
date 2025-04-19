@@ -25,7 +25,12 @@
     "prisma:migrate:reset": "prisma migrate reset",
     "prisma:db:seed": "prisma db seed",
     "prisma:db:push": "prisma db push",
-    "prepare": "husky"
+    "prepare": "husky",
+    "docker:prepare": "mkdir -p data/postgres data/redis",
+    "docker:up": "npm run docker:prepare && docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:restart": "docker compose restart"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.2",

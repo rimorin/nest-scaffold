@@ -1,0 +1,64 @@
+version: '3.8'
+
+# NestJS Development Environment
+# This configuration sets up the required services for local development
+
+services:
+  # NestJS Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nest-scaffold-app
+    ports:
+      - '3000:3000' # Map application port to host
+    environment:
+      - DATABASE_URL=postgresql://prisma:prisma@postgres:5432/nest_scaffold
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - .:/app # Mount app code for development
+      - /app/node_modules # Prevent node_modules from being overwritten
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Redis for caching, session storage, and message queuing
+  redis:
+    image: redis:alpine
+    container_name: nest-scaffold-redis
+    ports:
+      - '6379:6379' # Map container port to host
+    volumes:
+      - ./data/redis:/data # Persist Redis data to local directory
+    restart: unless-stopped
+    command: redis-server --appendonly yes # Enable AOF persistence for data durability
+    networks:
+      - app-network
+
+  # PostgreSQL database service
+  postgres:
+    image: postgres:14-alpine
+    container_name: nest-scaffold-postgres
+    ports:
+      - '5432:5432' # Map container port to host
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data # Persist database files
+    environment:
+      POSTGRES_USER: prisma # Database user for Prisma connection
+      POSTGRES_PASSWORD: prisma # Database password (change for production)
+      POSTGRES_DB: nest_scaffold # Default database name
+    restart: unless-stopped
+    networks:
+      - app-network
+
+# Networking configuration
+networks:
+  app-network:
+    driver: bridge # Use standard bridge network for container communication
+
+# Note: Run 'npm run docker:prepare' before starting containers to ensure
+# the required data directories exist

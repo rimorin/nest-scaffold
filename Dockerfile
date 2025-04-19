@@ -1,41 +1,26 @@
-# Build stage
-FROM node:22-alpine AS builder
+# Single-stage build for development
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Install minimal dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy application code
 COPY . .
+
+# Generate Prisma client
+RUN npm run prisma:generate
 
 # Build the application
 RUN npm run build
-
-# Remove development dependencies
-RUN npm prune --production
-
-# Production stage
-FROM node:22-alpine
-
-# Set working directory
-WORKDIR /app
-
-# Create non-root user for security
-RUN addgroup -S appuser && adduser -S -G appuser appuser
-
-# Set NODE_ENV
-ENV NODE_ENV production
-
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-
-# Use non-root user
-USER appuser
 
 # Expose application port
 EXPOSE 3000
