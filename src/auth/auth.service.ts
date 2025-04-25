@@ -49,7 +49,7 @@ export class AuthService {
    * Generates JWT access token upon successful login
    *
    * @param user - The authenticated user object
-   * @returns Object containing the signed JWT access token
+   * @returns Object containing cookie information for authentication
    */
   login(user: any) {
     const payload = {
@@ -59,9 +59,73 @@ export class AuthService {
       verified: user.verified,
     };
 
+    const token = this.jwtService.sign(payload);
+
     return {
-      access_token: this.jwtService.sign(payload),
+      cookie: this.getTokenCookie(token),
     };
+  }
+
+  /**
+   * Calculate expiration date from a duration string like '1d', '7h', etc.
+   *
+   * @param durationStr - Duration string (e.g. '1d', '7h', '30m', '60s')
+   * @returns Date object representing the expiration time
+   */
+  private calculateExpirationDate(durationStr: string): Date {
+    const expires = new Date();
+
+    if (durationStr.endsWith('d')) {
+      expires.setDate(expires.getDate() + parseInt(durationStr.slice(0, -1), 10));
+    } else if (durationStr.endsWith('h')) {
+      expires.setHours(expires.getHours() + parseInt(durationStr.slice(0, -1), 10));
+    } else if (durationStr.endsWith('m')) {
+      expires.setMinutes(expires.getMinutes() + parseInt(durationStr.slice(0, -1), 10));
+    } else if (durationStr.endsWith('s')) {
+      expires.setSeconds(expires.getSeconds() + parseInt(durationStr.slice(0, -1), 10));
+    } else {
+      // Default to 1 day if format not recognized
+      expires.setDate(expires.getDate() + 1);
+    }
+
+    return expires;
+  }
+
+  /**
+   * Get common cookie attributes used for both setting and clearing cookies
+   *
+   * @returns String of common cookie attributes
+   */
+  private getCommonCookieAttributes(): string {
+    const cookieDomain = process.env.COOKIE_DOMAIN;
+    const domainPart = cookieDomain ? `; Domain=${cookieDomain}` : '';
+
+    return `HttpOnly; Path=/${domainPart}; SameSite=Strict; Secure`;
+  }
+
+  /**
+   * Creates a secure cookie string with the JWT token
+   *
+   * @param token - The JWT token to include in the cookie
+   * @returns The cookie string ready to be set in response header
+   */
+  private getTokenCookie(token: string): string {
+    // Get JWT expiration from config
+    const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
+
+    const expires = this.calculateExpirationDate(expiresIn);
+    const maxAge = Math.floor((expires.getTime() - Date.now()) / 1000);
+
+    return `Authentication=${token}; ${this.getCommonCookieAttributes()}; Max-Age=${maxAge}`;
+  }
+
+  /**
+   * Creates a cookie that immediately expires to clear the authentication cookie
+   *
+   * @returns The cookie string that will clear the auth cookie
+   */
+  getClearAuthCookie(): string {
+    return `Authentication=; ${this.getCommonCookieAttributes()}; Max-Age=0`;
   }
 
   /**
@@ -99,23 +163,24 @@ export class AuthService {
    * @returns The created user object without the password field
    */
   async register(email: string, password: string, username?: string, name?: string) {
-    // Check if the email is already in use
-    const existingUserByEmail = await this.usersService.findOneByEmail(email);
+    // Validate email and username in parallel if both are provided
+    const [existingUserByEmail, existingUserByUsername] = await Promise.all([
+      this.usersService.findOneByEmail(email),
+      username ? this.usersService.findOneByUsername(username) : null,
+    ]);
+
     if (existingUserByEmail) {
       throw new BadRequestException('Email already in use');
     }
 
-    // Check if the username is already in use (if provided)
-    if (username) {
-      const existingUserByUsername = await this.usersService.findOneByUsername(username);
-      if (existingUserByUsername) {
-        throw new BadRequestException('Username already in use');
-      }
+    if (existingUserByUsername) {
+      throw new BadRequestException('Username already in use');
     }
 
-    const saltOrRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltOrRounds);
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Create the user
     const user = await this.usersService.create({
       email,
       username,
@@ -123,10 +188,11 @@ export class AuthService {
       name,
     });
 
+    // Remove password from the returned user object
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...result } = user;
 
-    // Add a welcome email job to the queue
+    // Queue welcome email
     await this.queueService.addJob('send-welcome-mail', {
       email: user.email,
       username: user.username,

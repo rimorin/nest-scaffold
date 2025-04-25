@@ -165,7 +165,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return access token with correct payload', () => {
+    it('should return cookie with correct payload', () => {
       // Arrange
       const user = {
         id: 1,
@@ -173,6 +173,11 @@ describe('AuthService', () => {
         email: 'test@example.com',
         verified: false,
       };
+      const mockToken = 'jwt-token';
+      const mockCookie =
+        'Authentication=jwt-token; HttpOnly; Path=/; Max-Age=3600; SameSite=Strict; Secure';
+      jest.spyOn(jwtService, 'sign').mockReturnValue(mockToken);
+      jest.spyOn(service as any, 'getTokenCookie').mockReturnValue(mockCookie);
 
       // Act
       const result = service.login(user);
@@ -185,7 +190,8 @@ describe('AuthService', () => {
         verified: user.verified,
       });
       expect(jwtService.sign).toHaveBeenCalledTimes(1);
-      expect(result).toEqual({ access_token: mockToken });
+      expect(result).toEqual({ cookie: mockCookie });
+      expect((service as any).getTokenCookie).toHaveBeenCalledWith(mockToken);
     });
   });
 

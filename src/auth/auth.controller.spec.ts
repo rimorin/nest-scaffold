@@ -16,6 +16,7 @@ describe('AuthController', () => {
     register: jest.fn(),
     getUserProfile: jest.fn(),
     logout: jest.fn(),
+    getClearAuthCookie: jest.fn(),
   };
 
   const mockQueueService = {
@@ -80,28 +81,34 @@ describe('AuthController', () => {
   });
 
   describe('login', () => {
-    it('should return token when login is successful', () => {
+    it('should set authentication cookie and return user data when login is successful', () => {
       // Arrange
       const user = { username: 'testuser', userId: 1 };
-      const expectedResult = { access_token: 'test-token' };
-      mockAuthService.login.mockReturnValue(expectedResult);
+      const cookieValue =
+        'Authentication=token; HttpOnly; Path=/; Max-Age=3600; SameSite=Strict; Secure';
+      const mockResponse = { setHeader: jest.fn() } as any;
+      mockAuthService.login.mockReturnValue({ cookie: cookieValue });
 
       // Act
-      const result = controller.login({ user });
+      const result = controller.login({ user }, mockResponse);
 
       // Assert
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual({ user });
       expect(mockAuthService.login).toHaveBeenCalledWith(user);
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Set-Cookie', cookieValue);
       expect(mockAuthService.login).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw an exception when login fails', async () => {
+    it('should throw an exception when login fails', () => {
       // Arrange
       const user = { username: 'testuser', userId: 1 };
-      mockAuthService.login.mockRejectedValue(new Error('Login failed'));
+      const mockResponse = { setHeader: jest.fn() } as any;
+      mockAuthService.login.mockImplementation(() => {
+        throw new UnauthorizedException('Login failed');
+      });
 
       // Act & Assert
-      await expect(controller.login({ user })).rejects.toThrow();
+      expect(() => controller.login({ user }, mockResponse)).toThrow(UnauthorizedException);
     });
   });
 
@@ -162,26 +169,53 @@ describe('AuthController', () => {
   });
 
   describe('logout', () => {
-    it('should call authService.logout with the token', async () => {
+    it('should call authService.logout with the token from cookies and clear the cookie', async () => {
       // Arrange
       const token = 'valid-token';
-      const req = { headers: { authorization: `Bearer ${token}` } };
+      const req = { cookies: { Authentication: token } };
+      const mockResponse = { setHeader: jest.fn() } as any;
+      const clearCookieValue =
+        'Authentication=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict; Secure';
+
       mockAuthService.logout.mockResolvedValue(undefined);
+      mockAuthService.getClearAuthCookie.mockReturnValue(clearCookieValue);
 
       // Act
-      const result = await controller.logout(req);
+      const result = await controller.logout(req, mockResponse);
 
       // Assert
       expect(mockAuthService.logout).toHaveBeenCalledWith(token);
+      expect(mockResponse.setHeader).toHaveBeenCalledWith('Set-Cookie', clearCookieValue);
       expect(result).toEqual({ message: 'Logout successful' });
     });
 
-    it('should throw UnauthorizedException when no token is provided', async () => {
+    it('should throw UnauthorizedException when no authentication cookie is provided', async () => {
       // Arrange
-      const req = { headers: { authorization: undefined } };
-      mockAuthService.logout.mockRejectedValue(new UnauthorizedException('No token provided'));
+      const req = { cookies: {} };
+      const mockResponse = { setHeader: jest.fn() } as any;
+
       // Act & Assert
-      await expect(controller.logout(req)).rejects.toThrow(UnauthorizedException);
+      await expect(controller.logout(req, mockResponse)).rejects.toThrow(
+        new UnauthorizedException('No authentication cookie found'),
+      );
+      expect(mockAuthService.logout).not.toHaveBeenCalled();
+    });
+
+    it('should throw UnauthorizedException when authService.logout fails', async () => {
+      // Arrange
+      const token = 'valid-token';
+      const req = { cookies: { Authentication: token } };
+      const mockResponse = { setHeader: jest.fn() } as any;
+      const error = new Error('Logout failed');
+
+      mockAuthService.logout.mockRejectedValue(error);
+
+      // Act & Assert
+      await expect(controller.logout(req, mockResponse)).rejects.toThrow(
+        new UnauthorizedException('Logout failed'),
+      );
+      expect(mockAuthService.logout).toHaveBeenCalledWith(token);
+      expect(mockResponse.setHeader).not.toHaveBeenCalled();
     });
   });
 });

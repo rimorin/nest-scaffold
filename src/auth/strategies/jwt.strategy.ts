@@ -1,14 +1,19 @@
-import { ExtractJwt, Strategy } from 'passport-jwt';
+import { Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { jwtConstants } from '../../config/jwt.config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Request } from 'express';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private prisma: PrismaService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: (request: Request) => {
+        const cookies = request?.cookies;
+        if (!cookies) return null;
+        return cookies['Authentication'];
+      },
       ignoreExpiration: false,
       secretOrKey: jwtConstants.secret,
       passReqToCallback: true,
@@ -16,9 +21,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(req: any, payload: any) {
-    const token = req.headers?.authorization?.split(' ')[1];
+    // Extract token from cookies
+    const token = req.cookies?.Authentication;
+
     if (!token) {
-      throw new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('No authentication cookie found');
     }
 
     // Check if the token is blacklisted

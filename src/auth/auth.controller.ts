@@ -9,7 +9,9 @@ import {
   HttpStatus,
   UnauthorizedException,
   UseInterceptors,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { RegisterDto } from './dtos/register.dto';
@@ -36,6 +38,7 @@ export class AuthController {
    *
    * @route POST /auth/login
    * @param req - The request object containing the validated user from LocalAuthGuard
+   * @param response - Express response object to set cookies
    * @returns JWT access token
    * @throws UnauthorizedException if authentication fails
    * @public This endpoint is accessible without authentication
@@ -45,14 +48,15 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: 'Login with username/email and password' })
   @ApiBody({ type: LoginDto })
-  @ApiResponse({ status: 200, description: 'Returns JWT access token on successful login' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns user data after setting authentication cookie',
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized - invalid credentials' })
-  login(@Request() req) {
-    try {
-      return this.authService.login(req.user);
-    } catch {
-      throw new UnauthorizedException();
-    }
+  login(@Request() req, @Res({ passthrough: true }) response: Response) {
+    const authResult = this.authService.login(req.user);
+    response.setHeader('Set-Cookie', authResult.cookie);
+    return { user: req.user };
   }
 
   /**
@@ -60,6 +64,7 @@ export class AuthController {
    *
    * @route POST /auth/logout
    * @param req - The request object containing the authorization header with JWT token
+   * @param response - Express response object to clear cookies
    * @returns Success message upon logout
    * @throws UnauthorizedException if logout fails or no token is provided
    * @protected This endpoint requires authentication
@@ -68,19 +73,20 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout current user' })
   @ApiResponse({ status: 200, description: 'Logout successful' })
   @ApiResponse({ status: 401, description: 'Unauthorized - invalid or missing token' })
-  async logout(@Request() req) {
-    try {
-      // Extract token from Authorization header
-      const token = req.headers?.authorization?.split(' ')[1];
-      if (!token) {
-        throw new UnauthorizedException('No token provided');
-      }
-      await this.authService.logout(token);
-      return { message: 'Logout successful' };
-    } catch (error) {
-      console.error(error);
-      throw new UnauthorizedException('Logout failed');
+  async logout(@Request() req, @Res({ passthrough: true }) response: Response) {
+    // Extract token from cookies
+    const token = req.cookies?.Authentication;
+
+    if (!token) {
+      throw new UnauthorizedException('No authentication cookie found');
     }
+
+    await this.authService.logout(token);
+
+    // Clear the authentication cookie
+    response.setHeader('Set-Cookie', this.authService.getClearAuthCookie());
+
+    return { message: 'Logout successful' };
   }
 
   /**
@@ -100,14 +106,17 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Bad request - validation error or existing user' })
   async register(@Body() registerDto: RegisterDto) {
     try {
-      return this.authService.register(
+      return await this.authService.register(
         registerDto.email,
         registerDto.password,
         registerDto.username,
         registerDto.name,
       );
     } catch (error) {
-      throw new HttpException(error.message || 'Registration failed', HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        error.message || 'Registration failed',
+        error.status || HttpStatus.BAD_REQUEST,
+      );
     }
   }
 

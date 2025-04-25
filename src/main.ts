@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConsoleLogger, ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import * as cookieParser from 'cookie-parser';
 
 /**
  * Bootstraps the NestJS application.
@@ -11,6 +12,7 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
  * - Global validation pipe for DTO validation
  * - URI-based API versioning (e.g. /v1/auth/login)
  * - Swagger API documentation with bearer auth support
+ * - Cookie parser middleware for handling HTTP cookies
  *
  * The application listens on the port specified in the environment variables,
  * or defaults to port 3000 if not specified.
@@ -19,6 +21,10 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Enable cookie-parser middleware for handling cookies
+  // Using signed cookies for additional security
+  app.use(cookieParser(process.env.COOKIE_SECRET || 'your-secret-key'));
 
   // Set up a console logger with JSON output and colors. For production, consider using a winston logger with file transport
   app.useLogger(
