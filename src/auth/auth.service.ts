@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueueService } from '../queue/queue.service';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Authentication service that handles user validation, login, logout, and registration
@@ -15,6 +16,7 @@ export class AuthService {
     private jwtService: JwtService,
     private prismaService: PrismaService,
     private queueService: QueueService,
+    private configService: ConfigService,
   ) {}
 
   /**
@@ -97,7 +99,7 @@ export class AuthService {
    * @returns String of common cookie attributes
    */
   private getCommonCookieAttributes(): string {
-    const cookieDomain = process.env.COOKIE_DOMAIN;
+    const cookieDomain = this.configService.get<string>('app.cookieDomain');
     const domainPart = cookieDomain ? `; Domain=${cookieDomain}` : '';
 
     return `HttpOnly; Path=/${domainPart}; SameSite=Strict; Secure`;
@@ -111,7 +113,7 @@ export class AuthService {
    */
   private getTokenCookie(token: string): string {
     // Get JWT expiration from config
-    const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
+    const expiresIn = this.configService.get<string>('jwt.expiresIn', '1d');
 
     const expires = this.calculateExpirationDate(expiresIn);
     const maxAge = Math.floor((expires.getTime() - Date.now()) / 1000);

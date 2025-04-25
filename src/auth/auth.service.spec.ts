@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException } from '@nestjs/common';
 import { QueueService } from '../queue/queue.service';
+import { ConfigService } from '@nestjs/config';
 
 jest.mock('bcrypt');
 
@@ -15,6 +16,7 @@ describe('AuthService', () => {
   let jwtService: JwtService;
   let prismaService: PrismaService;
   let queueService: QueueService;
+  // let configService: ConfigService;
 
   const mockUser = {
     id: 1,
@@ -78,6 +80,19 @@ describe('AuthService', () => {
             addJob: jest.fn(),
           },
         },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockImplementation((key, defaultValue) => {
+              const config = {
+                'app.cookieDomain': 'example.com',
+                'jwt.expiresIn': '1d',
+                'jwt.secret': 'test-secret',
+              };
+              return config[key] || defaultValue;
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -86,6 +101,7 @@ describe('AuthService', () => {
     jwtService = module.get<JwtService>(JwtService);
     prismaService = module.get<PrismaService>(PrismaService);
     queueService = module.get<QueueService>(QueueService);
+    // configService = module.get<ConfigService>(ConfigService);
   });
 
   it('should be defined', () => {

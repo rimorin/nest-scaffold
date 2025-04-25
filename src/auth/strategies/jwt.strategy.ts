@@ -1,13 +1,16 @@
-import { Strategy } from 'passport-jwt';
+import { Strategy, StrategyOptionsWithRequest } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { jwtConstants } from '../../config/jwt.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    configService: ConfigService,
+  ) {
     super({
       jwtFromRequest: (request: Request) => {
         const cookies = request?.cookies;
@@ -15,9 +18,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         return cookies['Authentication'];
       },
       ignoreExpiration: false,
-      secretOrKey: jwtConstants.secret,
+      secretOrKey: configService.get<string>('jwt.secret'),
       passReqToCallback: true,
-    });
+    } as StrategyOptionsWithRequest);
   }
 
   async validate(req: any, payload: any) {

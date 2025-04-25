@@ -4,12 +4,12 @@ import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { jwtConstants } from '../config/jwt.config';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { QueueModule } from '../queue/queue.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -17,10 +17,17 @@ import { QueueModule } from '../queue/queue.module';
     PassportModule,
     PrismaModule,
     QueueModule,
+    ConfigModule,
     CacheModule.register(),
-    JwtModule.register({
-      secret: jwtConstants.secret,
-      signOptions: { expiresIn: jwtConstants.expiresIn },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('jwt.secret'),
+        signOptions: {
+          expiresIn: configService.get<string>('jwt.expiresIn'),
+        },
+      }),
     }),
   ],
   providers: [AuthService, JwtStrategy, LocalStrategy],

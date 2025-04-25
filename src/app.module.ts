@@ -11,23 +11,28 @@ import { TaskModule } from './task/task.module';
 import { BullModule } from '@nestjs/bullmq';
 import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
+import { AppConfigModule } from './config/config.module';
+import { ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
+    AppConfigModule,
     ScheduleModule.forRoot(),
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
-        username: process.env.REDIS_USERNAME,
-      },
-      // Optional default job options
-      defaultJobOptions: {
-        attempts: parseInt(process.env.BULL_JOB_ATTEMPTS || '3'),
-        removeOnComplete: parseInt(process.env.BULL_REMOVE_ON_COMPLETE || '100'),
-        removeOnFail: parseInt(process.env.BULL_REMOVE_ON_FAIL || '200'),
-      },
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('redis.host'),
+          port: configService.get('redis.port'),
+          password: configService.get('redis.password'),
+          username: configService.get('redis.username'),
+        },
+        defaultJobOptions: {
+          attempts: configService.get('queue.bull.attempts'),
+          removeOnComplete: configService.get('queue.bull.removeOnComplete'),
+          removeOnFail: configService.get('queue.bull.removeOnFail'),
+        },
+      }),
     }),
     AuthModule,
     UsersModule,

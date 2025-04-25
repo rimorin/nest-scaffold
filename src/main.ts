@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConsoleLogger, ValidationPipe } from '@nestjs/common';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import * as cookieParser from 'cookie-parser';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Bootstraps the NestJS application.
@@ -14,17 +15,18 @@ import * as cookieParser from 'cookie-parser';
  * - Swagger API documentation with bearer auth support
  * - Cookie parser middleware for handling HTTP cookies
  *
- * The application listens on the port specified in the environment variables,
+ * The application listens on the port specified in the configuration,
  * or defaults to port 3000 if not specified.
  *
  * @returns {Promise<void>} A promise that resolves when the application has successfully started.
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
 
   // Enable cookie-parser middleware for handling cookies
   // Using signed cookies for additional security
-  app.use(cookieParser(process.env.COOKIE_SECRET || 'your-secret-key'));
+  app.use(cookieParser(configService.get('app.cookieSecret', 'your-secret-key')));
 
   // Set up a console logger with JSON output and colors. For production, consider using a winston logger with file transport
   app.useLogger(
@@ -52,10 +54,10 @@ async function bootstrap() {
 
       // Sets validation error messages to be returned when validation fails
       // Provides detailed feedback on what validation rules failed
-      // enableDebugMessages: process.env.NODE_ENV !== 'production',
+      // enableDebugMessages: configService.get('app.env') !== 'production',
 
       // Prevents validation errors from leaking implementation details in production
-      // disableErrorMessages: process.env.NODE_ENV === 'production',
+      // disableErrorMessages: configService.get('app.env') === 'production',
 
       // Validates nested objects within DTOs
       // validateCustomDecorators: true,
@@ -73,16 +75,6 @@ async function bootstrap() {
 
   // Allows the application to gracefully handle shutdown signals
   // This registers listeners for SIGTERM and SIGINT (Ctrl+C) signals
-  // Benefits:
-  // - Ensures active HTTP requests are completed before shutdown
-  // - Properly closes database connections (Prisma clients)
-  // - Gracefully shuts down BullMQ job queues and workers
-  // - Prevents data corruption from abrupt process termination
-  // - Releases system resources like file handles and network sockets
-  // - Essential for container environments (Docker/Kubernetes) where
-  //   containers are frequently stopped and restarted
-  // - Enables zero-downtime deployments in production
-  // - Works with NestJS lifecycle hooks (onModuleDestroy, beforeApplicationShutdown, onApplicationShutdown)
   app.enableShutdownHooks();
 
   // Set up a global exception filter to catch unhandled exceptions
@@ -90,7 +82,7 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Enable CORS with environment-specific settings
-  const isDevelopment = process.env.NODE_ENV !== 'production';
+  const isDevelopment = configService.get('app.env') !== 'production';
   app.enableCors(
     isDevelopment
       ? {
@@ -105,7 +97,7 @@ async function bootstrap() {
         }
       : {
           // Production: restrictive settings
-          origin: process.env.ALLOWED_ORIGINS?.split(',') || 'https://yourdomain.com',
+          origin: configService.get('app.allowedOrigins', 'https://yourdomain.com')?.split(','),
           methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
           allowedHeaders: ['Content-Type', 'Authorization'],
           credentials: true,
@@ -126,7 +118,8 @@ async function bootstrap() {
   SwaggerModule.setup('api', app, document);
 
   // Start the HTTP server on the specified port
-  await app.listen(process.env.PORT ?? 3000);
+  const port = configService.get('app.port', 3000);
+  await app.listen(port);
   console.log(`Application is running on: ${await app.getUrl()}`);
 }
 
