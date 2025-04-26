@@ -10,6 +10,7 @@ import {
   UnauthorizedException,
   UseInterceptors,
   Res,
+  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -19,6 +20,7 @@ import { LoginDto } from './dtos/login.dto';
 import { Public } from './decorators/public.decorator';
 import { CacheInterceptor } from '@nestjs/cache-manager';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { ProfileResponseDto } from './dtos/profile.dto';
 
 /**
  * Controller handling authentication-related endpoints
@@ -128,13 +130,18 @@ export class AuthController {
    * @returns User profile information
    * @protected This endpoint requires authentication
    */
+  @UseInterceptors(ClassSerializerInterceptor)
   @Get('profile')
   @ApiOperation({ summary: 'Get current user profile' })
-  @ApiResponse({ status: 200, description: 'User profile information' })
+  @ApiResponse({
+    status: 200,
+    description: 'User profile information',
+    type: ProfileResponseDto,
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Request() req) {
     // Fetch complete user information
     const user = await this.authService.getUserProfile(req.user.userId);
-    return user;
+    return new ProfileResponseDto(user);
   }
 }

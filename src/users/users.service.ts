@@ -11,6 +11,15 @@ export class UsersService {
   constructor(private prismaService: PrismaService) {}
 
   /**
+   * Find all users in the database
+   *
+   * @returns An array of user objects
+   */
+  async findAll(): Promise<User[]> {
+    return this.prismaService.user.findMany();
+  }
+
+  /**
    * Find a user by their username
    *
    * @param username - The unique username to search for

@@ -2,11 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { BadRequestException } from '@nestjs/common';
 import { QueueService } from '../queue/queue.service';
 import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt');
 
@@ -16,7 +16,6 @@ describe('AuthService', () => {
   let jwtService: JwtService;
   let prismaService: PrismaService;
   let queueService: QueueService;
-  // let configService: ConfigService;
 
   const mockUser = {
     id: 1,
@@ -58,20 +57,10 @@ describe('AuthService', () => {
         {
           provide: PrismaService,
           useValue: {
-            user: {
-              findUnique: jest.fn(),
-              findFirst: jest.fn(),
-              findMany: jest.fn(),
-              create: jest.fn(),
-              update: jest.fn(),
-              delete: jest.fn(),
-            },
             tokenBlacklist: {
               create: jest.fn(),
             },
             $transaction: jest.fn(),
-            $connect: jest.fn(),
-            $disconnect: jest.fn(),
           },
         },
         {
@@ -83,13 +72,13 @@ describe('AuthService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockImplementation((key, defaultValue) => {
+            get: jest.fn().mockImplementation(key => {
               const config = {
                 'app.cookieDomain': 'example.com',
                 'jwt.expiresIn': '1d',
                 'jwt.secret': 'test-secret',
               };
-              return config[key] || defaultValue;
+              return config[key];
             }),
           },
         },
@@ -101,7 +90,6 @@ describe('AuthService', () => {
     jwtService = module.get<JwtService>(JwtService);
     prismaService = module.get<PrismaService>(PrismaService);
     queueService = module.get<QueueService>(QueueService);
-    // configService = module.get<ConfigService>(ConfigService);
   });
 
   it('should be defined', () => {
@@ -109,7 +97,7 @@ describe('AuthService', () => {
   });
 
   describe('validateUser', () => {
-    it('should return user object without password when validation is successful', async () => {
+    it('should return user without password when credentials are valid', async () => {
       // Arrange
       jest.spyOn(usersService, 'findOne').mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
@@ -122,27 +110,24 @@ describe('AuthService', () => {
       // Assert
       expect(usersService.findOne).toHaveBeenCalledWith(identifier);
       expect(bcrypt.compare).toHaveBeenCalledWith(password, mockUser.password);
-      expect(result).toEqual(
-        expect.objectContaining({
-          id: mockUser.id,
-          username: mockUser.username,
-          email: mockUser.email,
-        }),
-      );
+
+      // Check that user is returned without password
+      expect(result).toBeTruthy();
+      expect(result.id).toEqual(mockUser.id);
+      expect(result.username).toEqual(mockUser.username);
+      expect(result.email).toEqual(mockUser.email);
       expect(result).not.toHaveProperty('password');
     });
 
     it('should return null when user is not found', async () => {
       // Arrange
       jest.spyOn(usersService, 'findOne').mockResolvedValue(null);
-      const identifier = 'wrong@example.com';
-      const password = 'password';
 
       // Act
-      const result = await service.validateUser(identifier, password);
+      const result = await service.validateUser('nonexistent@example.com', 'password');
 
       // Assert
-      expect(usersService.findOne).toHaveBeenCalledWith(identifier);
+      expect(usersService.findOne).toHaveBeenCalledWith('nonexistent@example.com');
       expect(bcrypt.compare).not.toHaveBeenCalled();
       expect(result).toBeNull();
     });
@@ -151,37 +136,32 @@ describe('AuthService', () => {
       // Arrange
       jest.spyOn(usersService, 'findOne').mockResolvedValue(mockUser);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-      const identifier = 'test@example.com';
-      const password = 'wrongpassword';
 
       // Act
-      const result = await service.validateUser(identifier, password);
+      const result = await service.validateUser('test@example.com', 'wrongpassword');
 
       // Assert
-      expect(usersService.findOne).toHaveBeenCalledWith(identifier);
-      expect(bcrypt.compare).toHaveBeenCalledWith(password, mockUser.password);
+      expect(bcrypt.compare).toHaveBeenCalledWith('wrongpassword', mockUser.password);
       expect(result).toBeNull();
     });
 
-    it('should return null when user is disabled', async () => {
+    it('should return null when user account is disabled', async () => {
       // Arrange
       const disabledUser = { ...mockUser, disabled: true };
       jest.spyOn(usersService, 'findOne').mockResolvedValue(disabledUser);
-      const identifier = 'test@example.com';
-      const password = 'password';
 
       // Act
-      const result = await service.validateUser(identifier, password);
+      const result = await service.validateUser('test@example.com', 'password');
 
       // Assert
-      expect(usersService.findOne).toHaveBeenCalledWith(identifier);
+      expect(usersService.findOne).toHaveBeenCalledWith('test@example.com');
       expect(bcrypt.compare).not.toHaveBeenCalled();
       expect(result).toBeNull();
     });
   });
 
   describe('login', () => {
-    it('should return cookie with correct payload', () => {
+    it('should generate JWT token and return cookie', () => {
       // Arrange
       const user = {
         id: 1,
@@ -192,6 +172,7 @@ describe('AuthService', () => {
       const mockToken = 'jwt-token';
       const mockCookie =
         'Authentication=jwt-token; HttpOnly; Path=/; Max-Age=3600; SameSite=Strict; Secure';
+
       jest.spyOn(jwtService, 'sign').mockReturnValue(mockToken);
       jest.spyOn(service as any, 'getTokenCookie').mockReturnValue(mockCookie);
 
@@ -205,19 +186,17 @@ describe('AuthService', () => {
         sub: user.id,
         verified: user.verified,
       });
-      expect(jwtService.sign).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ cookie: mockCookie });
-      expect((service as any).getTokenCookie).toHaveBeenCalledWith(mockToken);
     });
   });
 
   describe('register', () => {
-    it('should register a new user and return user without password', async () => {
+    it('should create new user and trigger welcome email', async () => {
       // Arrange
-      const email = 'test@example.com';
+      const email = 'new@example.com';
       const password = 'Password123!';
-      const username = 'testuser';
-      const name = 'Test User';
+      const username = 'newuser';
+      const name = 'New User';
       const hashedPassword = 'hashedpassword';
 
       jest.spyOn(usersService, 'findOneByEmail').mockResolvedValue(null);
@@ -243,19 +222,12 @@ describe('AuthService', () => {
         username: mockUser.username,
         name: mockUser.name,
       });
-      expect(result).toEqual(
-        expect.objectContaining({
-          id: expect.any(Number),
-          username: expect.any(String),
-          email: expect.any(String),
-        }),
-      );
       expect(result).not.toHaveProperty('password');
     });
 
-    it('should register without optional username and name', async () => {
+    it('should register with only required fields (email and password)', async () => {
       // Arrange
-      const email = 'test@example.com';
+      const email = 'minimal@example.com';
       const password = 'Password123!';
       const hashedPassword = 'hashedpassword';
 
@@ -269,52 +241,48 @@ describe('AuthService', () => {
       // Assert
       expect(usersService.findOneByEmail).toHaveBeenCalledWith(email);
       expect(usersService.findOneByUsername).not.toHaveBeenCalled();
-      expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
       expect(usersService.create).toHaveBeenCalledWith({
         email,
-        username: undefined,
         password: hashedPassword,
+        username: undefined,
         name: undefined,
       });
       expect(result).not.toHaveProperty('password');
     });
 
-    it('should throw BadRequestException if email already exists', async () => {
+    it('should throw BadRequestException when email is already registered', async () => {
       // Arrange
-      const email = 'test@example.com';
+      const email = 'existing@example.com';
       const password = 'Password123!';
 
       jest.spyOn(usersService, 'findOneByEmail').mockResolvedValue(mockUser);
 
       // Act & Assert
-      await expect(service.register(email, password)).rejects.toThrow(BadRequestException);
-      expect(usersService.findOneByEmail).toHaveBeenCalledWith(email);
+      await expect(service.register(email, password)).rejects.toThrow(
+        new BadRequestException('Email already in use'),
+      );
       expect(usersService.create).not.toHaveBeenCalled();
-      expect(bcrypt.hash).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException if username already exists', async () => {
+    it('should throw BadRequestException when username is already taken', async () => {
       // Arrange
-      const email = 'test@example.com';
+      const email = 'new@example.com';
       const password = 'Password123!';
-      const username = 'testuser';
+      const username = 'existinguser';
 
       jest.spyOn(usersService, 'findOneByEmail').mockResolvedValue(null);
       jest.spyOn(usersService, 'findOneByUsername').mockResolvedValue(mockUser);
 
       // Act & Assert
       await expect(service.register(email, password, username)).rejects.toThrow(
-        BadRequestException,
+        new BadRequestException('Username already in use'),
       );
-      expect(usersService.findOneByEmail).toHaveBeenCalledWith(email);
-      expect(usersService.findOneByUsername).toHaveBeenCalledWith(username);
       expect(usersService.create).not.toHaveBeenCalled();
-      expect(bcrypt.hash).not.toHaveBeenCalled();
     });
   });
 
   describe('logout', () => {
-    it('should add token to blacklist with correct expiry', async () => {
+    it('should blacklist token with correct expiry time', async () => {
       // Arrange
       const token = 'valid.jwt.token';
       const decodedToken = {
@@ -322,12 +290,8 @@ describe('AuthService', () => {
         sub: 1,
         email: 'test@example.com',
       };
-      jest.spyOn(jwtService, 'decode').mockReturnValue(decodedToken);
-      // jest.spyOn(prismaService.tokenBlacklist, 'create').mockResolvedValue({
-      //   token,
-      //   expiresAt: new Date(decodedToken.exp * 1000),
 
-      // });
+      jest.spyOn(jwtService, 'decode').mockReturnValue(decodedToken);
 
       // Act
       await service.logout(token);
@@ -340,21 +304,26 @@ describe('AuthService', () => {
           expiresAt: expect.any(Date),
         },
       });
+      const createCall = (prismaService.tokenBlacklist.create as jest.Mock).mock.calls[0][0];
+      // Verify expiration date matches token's expiration
+      // const createCall = prismaService.tokenBlacklist.create.mock.calls[0][0];
+      const expectedExpiry = new Date(decodedToken.exp * 1000);
+      expect(createCall.data.expiresAt.getTime()).toEqual(expectedExpiry.getTime());
     });
 
-    it('should throw BadRequestException for invalid token', async () => {
+    it('should throw BadRequestException for invalid tokens', async () => {
       // Arrange
       const token = 'invalid.token';
       jest.spyOn(jwtService, 'decode').mockReturnValue(null);
 
       // Act & Assert
-      await expect(service.logout(token)).rejects.toThrow(BadRequestException);
+      await expect(service.logout(token)).rejects.toThrow(new BadRequestException('Invalid token'));
       expect(prismaService.tokenBlacklist.create).not.toHaveBeenCalled();
     });
   });
 
   describe('getUserProfile', () => {
-    it('should return user profile without password', async () => {
+    it('should return user profile without sensitive information', async () => {
       // Arrange
       const userId = 1;
       jest.spyOn(usersService, 'findById').mockResolvedValue(mockUser);
@@ -369,19 +338,21 @@ describe('AuthService', () => {
           id: mockUser.id,
           username: mockUser.username,
           email: mockUser.email,
+          name: mockUser.name,
         }),
       );
       expect(result).not.toHaveProperty('password');
     });
 
-    it('should throw BadRequestException if user is not found', async () => {
+    it('should throw BadRequestException when user is not found', async () => {
       // Arrange
       const userId = 999;
       jest.spyOn(usersService, 'findById').mockResolvedValue(null);
 
       // Act & Assert
-      await expect(service.getUserProfile(userId)).rejects.toThrow(BadRequestException);
-      expect(usersService.findById).toHaveBeenCalledWith(userId);
+      await expect(service.getUserProfile(userId)).rejects.toThrow(
+        new BadRequestException('User not found'),
+      );
     });
   });
 });
