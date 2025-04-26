@@ -6,6 +6,7 @@ import databaseConfig from './database.config';
 import jwtConfig from './jwt.config';
 import redisConfig from './redis.config';
 import queueConfig from './queue.config';
+import cacheConfig from './cache.config';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import queueConfig from './queue.config';
       cache: true,
       validate,
       expandVariables: true,
-      load: [appConfig, databaseConfig, jwtConfig, redisConfig, queueConfig],
+      load: [appConfig, databaseConfig, jwtConfig, redisConfig, queueConfig, cacheConfig],
     }),
   ],
 })
