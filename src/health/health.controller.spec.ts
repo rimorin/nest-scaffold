@@ -14,13 +14,7 @@ describe('HealthController', () => {
         PrismaModule,
         ConfigModule.forRoot({
           isGlobal: true,
-          load: [
-            () => ({
-              database: {
-                url: 'postgresql://test:test@localhost:5432/test_db',
-              },
-            }),
-          ],
+          load: [() => ({ database: { url: 'postgresql://test:test@localhost:5432/test_db' } })],
         }),
       ],
       controllers: [HealthController],

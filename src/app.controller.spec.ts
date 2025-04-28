@@ -7,29 +7,22 @@ describe('AppController', () => {
   let appService: AppService;
 
   beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
       providers: [
         {
           provide: AppService,
-          useValue: {
-            getHello: jest.fn().mockReturnValue('Hello World!'),
-          },
+          useValue: { getHello: jest.fn().mockReturnValue('Hello World!') },
         },
       ],
     }).compile();
 
-    appController = app.get<AppController>(AppController);
-    appService = app.get<AppService>(AppService);
+    appController = module.get<AppController>(AppController);
+    appService = module.get<AppService>(AppService);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      const result = appController.getHello();
-
-      // Assert
-      expect(result).toBe('Hello World!');
-      expect(appService.getHello).toHaveBeenCalled();
-    });
+  it('should return "Hello World!"', () => {
+    expect(appController.getHello()).toBe('Hello World!');
+    expect(appService.getHello).toHaveBeenCalled();
   });
 });

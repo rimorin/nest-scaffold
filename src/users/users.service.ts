@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationService } from '../common/pagination/pagination.service';
+import { PaginationQueryDto } from '../common/pagination/pagination.dto';
+import { PaginationResponseDto } from '../common/pagination/pagination-response.dto';
 
 /**
  * Service responsible for user management operations
@@ -8,7 +11,30 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class UsersService {
-  constructor(private prismaService: PrismaService) {}
+  constructor(
+    private prismaService: PrismaService,
+    private paginationService: PaginationService,
+  ) {}
+
+  /**
+   * Find users in the database with pagination, sorting, and filtering
+   *
+   * @param paginationOptions - Options for pagination (skip, take, sortBy, sortOrder)
+   * @param filters - Optional filters for the query (e.g., { verified: true })
+   * @returns Paginated response with user data and metadata
+   */
+  async findAllPaginated(
+    paginationOptions: PaginationQueryDto,
+    filters?: Record<string, any>,
+  ): Promise<PaginationResponseDto<User>> {
+    return this.paginationService.paginate<User, typeof this.prismaService.user>(
+      this.prismaService.user,
+      paginationOptions,
+      {
+        where: filters,
+      },
+    );
+  }
 
   /**
    * Find all users in the database

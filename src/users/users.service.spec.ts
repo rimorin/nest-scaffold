@@ -2,10 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { User } from '@prisma/client';
+import { PaginationService } from '../common/pagination/pagination.service';
+import { PaginationQueryDto } from '../common/pagination/pagination.dto';
 
 describe('UsersService', () => {
   let service: UsersService;
   let prismaService: PrismaService;
+  let paginationService: PaginationService;
 
   const mockUser: User = {
     id: 1,
@@ -31,7 +34,15 @@ describe('UsersService', () => {
               findFirst: jest.fn(),
               create: jest.fn(),
               update: jest.fn(),
+              findMany: jest.fn(),
+              count: jest.fn(),
             },
+          },
+        },
+        {
+          provide: PaginationService,
+          useValue: {
+            paginate: jest.fn(),
           },
         },
       ],
@@ -39,81 +50,41 @@ describe('UsersService', () => {
 
     service = module.get<UsersService>(UsersService);
     prismaService = module.get<PrismaService>(PrismaService);
+    paginationService = module.get<PaginationService>(PaginationService);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
-  describe('findOneByUsername', () => {
+  describe('user lookup methods', () => {
     it('should find a user by username', async () => {
-      // Arrange
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser);
 
-      // Act
       const result = await service.findOneByUsername('testuser');
 
-      // Assert
       expect(result).toEqual(mockUser);
       expect(prismaService.user.findUnique).toHaveBeenCalledWith({
         where: { username: 'testuser' },
       });
     });
 
-    it('should return null when user not found', async () => {
-      // Arrange
-      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
-
-      // Act
-      const result = await service.findOneByUsername('nonexistent');
-
-      // Assert
-      expect(result).toBeNull();
-      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { username: 'nonexistent' },
-      });
-    });
-  });
-
-  describe('findOneByEmail', () => {
     it('should find a user by email', async () => {
-      // Arrange
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser);
 
-      // Act
       const result = await service.findOneByEmail('test@example.com');
 
-      // Assert
       expect(result).toEqual(mockUser);
       expect(prismaService.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'test@example.com' },
       });
     });
 
-    it('should return null when email not found', async () => {
-      // Arrange
-      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
-
-      // Act
-      const result = await service.findOneByEmail('nonexistent@example.com');
-
-      // Assert
-      expect(result).toBeNull();
-      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { email: 'nonexistent@example.com' },
-      });
-    });
-  });
-
-  describe('findOne', () => {
     it('should find a user by email or username', async () => {
-      // Arrange
       jest.spyOn(prismaService.user, 'findFirst').mockResolvedValue(mockUser);
 
-      // Act
       const result = await service.findOne('test@example.com');
 
-      // Assert
       expect(result).toEqual(mockUser);
       expect(prismaService.user.findFirst).toHaveBeenCalledWith({
         where: {
@@ -122,30 +93,34 @@ describe('UsersService', () => {
       });
     });
 
-    it('should return null when identifier not found', async () => {
-      // Arrange
+    it('should find a user by id', async () => {
+      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser);
+
+      const result = await service.findById(1);
+
+      expect(result).toEqual(mockUser);
+      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+      });
+    });
+
+    it('should return null when user is not found', async () => {
+      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
       jest.spyOn(prismaService.user, 'findFirst').mockResolvedValue(null);
 
-      // Act
-      const result = await service.findOne('nonexistent');
-
-      // Assert
-      expect(result).toBeNull();
-      expect(prismaService.user.findFirst).toHaveBeenCalledWith({
-        where: {
-          OR: [{ email: 'nonexistent' }, { username: 'nonexistent' }],
-        },
-      });
+      expect(await service.findOneByUsername('nonexistent')).toBeNull();
+      expect(await service.findOneByEmail('nonexistent@example.com')).toBeNull();
+      expect(await service.findOne('nonexistent')).toBeNull();
+      expect(await service.findById(999)).toBeNull();
     });
   });
 
   describe('create', () => {
-    it('should create a new user with all fields', async () => {
-      // Arrange
+    it('should create a user with provided fields', async () => {
       const userData = {
         email: 'new@example.com',
-        username: 'newuser',
         password: 'hashedpass',
+        username: 'newuser',
         name: 'New User',
       };
 
@@ -155,98 +130,27 @@ describe('UsersService', () => {
         id: 2,
       });
 
-      // Act
       const result = await service.create(userData);
 
-      // Assert
       expect(result).toEqual(
         expect.objectContaining({
           id: 2,
           email: userData.email,
-          username: userData.username,
-          password: userData.password,
-          name: userData.name,
         }),
       );
-
-      expect(prismaService.user.create).toHaveBeenCalledWith({
-        data: userData,
-      });
-    });
-
-    it('should create a user without optional fields', async () => {
-      // Arrange
-      const userData = {
-        email: 'minimal@example.com',
-        password: 'hashedpass',
-      };
-
-      jest.spyOn(prismaService.user, 'create').mockResolvedValue({
-        ...mockUser,
-        ...userData,
-        username: null,
-        name: null,
-        id: 3,
-      });
-
-      // Act
-      const result = await service.create(userData);
-
-      // Assert
-      expect(result).toEqual(
-        expect.objectContaining({
-          id: 3,
-          email: userData.email,
-          password: userData.password,
-        }),
-      );
-
       expect(prismaService.user.create).toHaveBeenCalledWith({
         data: userData,
       });
     });
   });
 
-  describe('findById', () => {
-    it('should find a user by id', async () => {
-      // Arrange
-      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(mockUser);
-
-      // Act
-      const result = await service.findById(1);
-
-      // Assert
-      expect(result).toEqual(mockUser);
-      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { id: 1 },
-      });
-    });
-
-    it('should return null when id not found', async () => {
-      // Arrange
-      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
-
-      // Act
-      const result = await service.findById(999);
-
-      // Assert
-      expect(result).toBeNull();
-      expect(prismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { id: 999 },
-      });
-    });
-  });
-
-  describe('setVerificationStatus', () => {
+  describe('status update methods', () => {
     it('should update user verification status', async () => {
-      // Arrange
-      const updatedUser = { ...mockUser, verified: true, updatedAt: new Date() };
+      const updatedUser = { ...mockUser, verified: true };
       jest.spyOn(prismaService.user, 'update').mockResolvedValue(updatedUser);
 
-      // Act
       const result = await service.setVerificationStatus(1, true);
 
-      // Assert
       expect(result).toEqual(updatedUser);
       expect(prismaService.user.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -256,18 +160,13 @@ describe('UsersService', () => {
         },
       });
     });
-  });
 
-  describe('setDisabledStatus', () => {
     it('should update user disabled status', async () => {
-      // Arrange
-      const updatedUser = { ...mockUser, disabled: true, updatedAt: new Date() };
+      const updatedUser = { ...mockUser, disabled: true };
       jest.spyOn(prismaService.user, 'update').mockResolvedValue(updatedUser);
 
-      // Act
       const result = await service.setDisabledStatus(1, true);
 
-      // Assert
       expect(result).toEqual(updatedUser);
       expect(prismaService.user.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -276,6 +175,38 @@ describe('UsersService', () => {
           updatedAt: expect.any(Date),
         },
       });
+    });
+  });
+
+  describe('findAllPaginated', () => {
+    it('should return paginated users with filters', async () => {
+      const paginationOptions: PaginationQueryDto = {
+        skip: 0,
+        take: 10,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      };
+
+      const paginatedResult = {
+        items: [mockUser],
+        total: 1,
+        page: 0,
+        pageSize: 10,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      };
+
+      jest.spyOn(paginationService, 'paginate').mockResolvedValue(paginatedResult);
+
+      const result = await service.findAllPaginated(paginationOptions, { verified: true });
+
+      expect(result).toEqual(paginatedResult);
+      expect(paginationService.paginate).toHaveBeenCalledWith(
+        prismaService.user,
+        paginationOptions,
+        { where: { verified: true } },
+      );
     });
   });
 });

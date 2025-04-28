@@ -3,6 +3,7 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { NotFoundException } from '@nestjs/common';
 import { UserResponseDto } from './dtos/user.dto';
+import { PaginationService } from '../common/pagination/pagination.service';
 
 // Mock implementation of UserResponseDto to test serialization
 jest.mock('./dtos/user.dto', () => {
@@ -71,6 +72,22 @@ describe('UsersController', () => {
               const user = mockUsers.find(u => u.id === id);
               return Promise.resolve(user || null);
             }),
+            findAllPaginated: jest.fn().mockResolvedValue({
+              items: mockUsers,
+              meta: {
+                totalItems: 2,
+                itemCount: 2,
+                itemsPerPage: 10,
+                totalPages: 1,
+                currentPage: 1,
+              },
+            }),
+          },
+        },
+        {
+          provide: PaginationService,
+          useValue: {
+            paginate: jest.fn(),
           },
         },
       ],
@@ -131,6 +148,67 @@ describe('UsersController', () => {
     it('should throw NotFoundException when user not found', async () => {
       // Act & Assert
       await expect(controller.findOne(999)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findAllPaginated', () => {
+    it('should return paginated users with serialized data', async () => {
+      // Arrange
+      const mockFilterDto = {
+        skip: 0,
+        take: 10,
+        sortBy: 'createdAt',
+        sortOrder: 'desc' as const,
+        username: 'test',
+        email: 'example',
+        verified: true,
+        disabled: false,
+      };
+
+      const paginatedResult = {
+        items: mockUsers,
+        total: 2,
+        page: 0,
+        pageSize: 10,
+        totalPages: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+      };
+
+      const usersServiceMock = (
+        await Test.createTestingModule({
+          controllers: [UsersController],
+          providers: [
+            {
+              provide: UsersService,
+              useValue: {
+                findAllPaginated: jest.fn(),
+              },
+            },
+          ],
+        }).compile()
+      ).get<{ findAllPaginated: jest.Mock }>(UsersService);
+      usersServiceMock.findAllPaginated.mockResolvedValue(paginatedResult);
+
+      // Act
+      const result = await controller.findAllPaginated(mockFilterDto);
+
+      // Assert
+      expect(result).toHaveProperty('items');
+      expect(result).toHaveProperty('meta');
+      expect(result.items).toHaveLength(2);
+
+      // Check that items are properly serialized
+      expect(result.items[0]).toHaveProperty('email', mockUsers[0].email);
+      expect(result.items[0]).toHaveProperty('username', mockUsers[0].username);
+      expect(result.items[0]).not.toHaveProperty('password');
+
+      // Check pagination metadata
+      expect(result['meta']).toHaveProperty('totalItems', 2);
+      expect(result['meta']).toHaveProperty('itemsPerPage', 10);
+      expect(result['meta']).toHaveProperty('totalPages', 1);
+      expect(result['meta']).toHaveProperty('currentPage', 1);
+      expect(result['meta']).toHaveProperty('itemCount', 2);
     });
   });
 });
